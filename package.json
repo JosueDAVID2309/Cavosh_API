@@ -1,0 +1,28 @@
+{
+  "name": "cavosh_api_node",
+  "version": "1.0.0",
+  "description": "Cavosh Cafe POS API - Node.js Express migration of the Spring Boot backend",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "lint": "eslint src/ --ext .js",
+    "lint:fix": "eslint src/ --ext .js --fix"
+  },
+  "keywords": ["cavosh", "cafe", "pos", "api", "express"],
+  "author": "Cavosh Team",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mysql2": "^3.11.0",
+    "sequelize": "^6.37.3"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "glob": "^10.0.0",
+    "nodemon": "^3.1.4"
+  }
+}
