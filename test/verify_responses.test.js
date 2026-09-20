@@ -1,7 +1,7 @@
 process.env.NODE_ENV = 'test';
 require('dotenv').config();
 
-const { sequelize } = require('../src/models');
+const { sequelize, Usuario } = require('../src/models');
 const seedDatabase = require('../src/utils/seed');
 const app = require('../src/app');
 const request = require('supertest');
@@ -90,5 +90,54 @@ describe('Verificaciones de respuestas', () => {
     expect(res.body.data.email).toBe('test@cavosh.com');
     expect(res.body.data.puntos).toBe(124);
     expect('password' in res.body.data).toBe(false);
+  });
+
+  test('Recuperar password: respuesta sin password y con mensaje', async () => {
+    const user = await Usuario.findOne({ where: { email: 'usuario@cavosh.com' } });
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    user.codigoVerificacion = code;
+    user.codigoExpiracion = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+
+    const res = await request(app)
+      .post('/api/auth/recuperar-password')
+      .send({ email: 'usuario@cavosh.com' });
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.mensaje).toBeDefined();
+    expect('password' in res.body.data).toBe(false);
+  });
+
+  test('Verificar cuenta: respuesta con mensaje y usuario sin password', async () => {
+    const user = await Usuario.findOne({ where: { email: 'usuario@cavosh.com' } });
+    user.esVerificado = false;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    user.codigoVerificacion = code;
+    user.codigoExpiracion = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await user.save();
+
+    const res = await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({ email: 'usuario@cavosh.com', codigo: code });
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.mensaje).toBeDefined();
+    expect(res.body.data.usuario).toBeDefined();
+    expect(res.body.data.usuario.email).toBe('usuario@cavosh.com');
+    expect('password' in res.body.data.usuario).toBe(false);
+  });
+
+  test('Reenviar codigo verificacion: respuesta con mensaje', async () => {
+    const user = await Usuario.findOne({ where: { email: 'usuario@cavosh.com' } });
+    user.esVerificado = false;
+    user.codigoVerificacion = null;
+    await user.save();
+
+    const res = await request(app)
+      .post('/api/auth/reenviar-codigo-verificacion')
+      .send({ email: 'usuario@cavosh.com' });
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.mensaje).toBeDefined();
   });
 });

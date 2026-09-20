@@ -1,10 +1,38 @@
 process.env.NODE_ENV = 'test';
 require('dotenv').config();
 
-const { sequelize } = require('../src/models');
+const { sequelize, Usuario } = require('../src/models');
 const seedDatabase = require('../src/utils/seed');
 const app = require('../src/app');
 const request = require('supertest');
+
+async function ensureUnverifiedUser(email) {
+  const user = await Usuario.findOne({ where: { email } });
+  if (!user) throw new Error(`User ${email} not found`);
+  user.esVerificado = false;
+  user.codigoVerificacion = null;
+  user.codigoExpiracion = null;
+  await user.save();
+  return user;
+}
+
+async function setRecoveryCode(email) {
+  const user = await Usuario.findOne({ where: { email } });
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  user.codigoVerificacion = code;
+  user.codigoExpiracion = new Date(Date.now() + 15 * 60 * 1000);
+  await user.save();
+  return { user, code };
+}
+
+async function setVerificationCode(email) {
+  const user = await Usuario.findOne({ where: { email } });
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  user.codigoVerificacion = code;
+  user.codigoExpiracion = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await user.save();
+  return { user, code };
+}
 
 beforeAll(async () => {
   await sequelize.sync({ force: true });
@@ -99,6 +127,185 @@ describe('Auth', () => {
       .put('/api/auth/perfil/1/preferencias')
       .query({ notificaciones: 'false', ubicacion: 'false' });
     expect(res.status).toBe(200);
+  });
+
+  test('POST /api/auth/registrar -> 201 con puntos 124', async () => {
+    const res = await request(app)
+      .post('/api/auth/registrar')
+      .send({ nombreCompleto: 'Nuevo Usuario', email: 'nuevo@cavosh.com', password: 'pass123' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe('nuevo@cavosh.com');
+    expect(res.body.data.puntos).toBe(124);
+    expect('password' in res.body.data).toBe(false);
+  });
+});
+
+describe('Recuperación de contraseña', () => {
+  let recoveryEmail;
+
+  beforeAll(async () => {
+    const user = await Usuario.findOne({ where: { email: 'usuario@cavosh.com' } });
+    recoveryEmail = user.email;
+    await ensureUnverifiedUser(recoveryEmail);
+  });
+
+  test('POST /api/auth/recuperar-password (email registrado) -> 200', async () => {
+    const res = await request(app)
+      .post('/api/auth/recuperar-password')
+      .send({ email: recoveryEmail });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/recuperar-password (email no registrado) -> 200', async () => {
+    const res = await request(app)
+      .post('/api/auth/recuperar-password')
+      .send({ email: 'noexiste@cavosh.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/recuperar-password (sin email) -> 400', async () => {
+    const res = await request(app)
+      .post('/api/auth/recuperar-password')
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/verificar-codigo (codigo valido) -> 200', async () => {
+    await setRecoveryCode(recoveryEmail);
+    const user = await Usuario.findOne({ where: { email: recoveryEmail } });
+    const code = user.codigoVerificacion;
+
+    const res = await request(app)
+      .post('/api/auth/verificar-codigo')
+      .send({ email: recoveryEmail, codigo: code });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/verificar-codigo (codigo incorrecto) -> 400', async () => {
+    await setRecoveryCode(recoveryEmail);
+
+    const res = await request(app)
+      .post('/api/auth/verificar-codigo')
+      .send({ email: recoveryEmail, codigo: '000000' });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/verificar-codigo (sin datos) -> 400', async () => {
+    const res = await request(app)
+      .post('/api/auth/verificar-codigo')
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/cambiar-password (codigo valido) -> 200', async () => {
+    await setRecoveryCode(recoveryEmail);
+    const user = await Usuario.findOne({ where: { email: recoveryEmail } });
+    const code = user.codigoVerificacion;
+
+    const res = await request(app)
+      .post('/api/auth/cambiar-password')
+      .send({ email: recoveryEmail, codigo: code, nuevaPassword: 'newpass123' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/cambiar-password (codigo incorrecto) -> 400', async () => {
+    await setRecoveryCode(recoveryEmail);
+
+    const res = await request(app)
+      .post('/api/auth/cambiar-password')
+      .send({ email: recoveryEmail, codigo: '000000', nuevaPassword: 'newpass123' });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/cambiar-password (password corta) -> 400', async () => {
+    await setRecoveryCode(recoveryEmail);
+    const user = await Usuario.findOne({ where: { email: recoveryEmail } });
+    const code = user.codigoVerificacion;
+
+    const res = await request(app)
+      .post('/api/auth/cambiar-password')
+      .send({ email: recoveryEmail, codigo: code, nuevaPassword: '123' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('Verificación de cuenta', () => {
+  let verifyEmail;
+
+  beforeAll(async () => {
+    const user = await Usuario.findOne({ where: { email: 'usuario@cavosh.com' } });
+    verifyEmail = user.email;
+    await ensureUnverifiedUser(verifyEmail);
+  });
+
+  test('POST /api/auth/verificar-cuenta (codigo valido) -> 200', async () => {
+    const { code } = await setVerificationCode(verifyEmail);
+
+    const res = await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({ email: verifyEmail, codigo: code });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/verificar-cuenta (codigo incorrecto) -> 400', async () => {
+    await ensureUnverifiedUser(verifyEmail);
+    await setVerificationCode(verifyEmail);
+
+    const res = await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({ email: verifyEmail, codigo: '000000' });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/verificar-cuenta (ya verificada) -> 200', async () => {
+    await ensureUnverifiedUser(verifyEmail);
+    const { code } = await setVerificationCode(verifyEmail);
+
+    await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({ email: verifyEmail, codigo: code });
+
+    const res = await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({ email: verifyEmail, codigo: code });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/verificar-cuenta (sin datos) -> 400', async () => {
+    const res = await request(app)
+      .post('/api/auth/verificar-cuenta')
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /api/auth/reenviar-codigo-verificacion (email no verificado) -> 200', async () => {
+    await ensureUnverifiedUser('usuario@cavosh.com');
+
+    const res = await request(app)
+      .post('/api/auth/reenviar-codigo-verificacion')
+      .send({ email: 'usuario@cavosh.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('POST /api/auth/reenviar-codigo-verificacion (email no existe) -> 404', async () => {
+    const res = await request(app)
+      .post('/api/auth/reenviar-codigo-verificacion')
+      .send({ email: 'noexiste@cavosh.com' });
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/auth/reenviar-codigo-verificacion (sin email) -> 400', async () => {
+    const res = await request(app)
+      .post('/api/auth/reenviar-codigo-verificacion')
+      .send({});
+    expect(res.status).toBe(400);
   });
 });
 
