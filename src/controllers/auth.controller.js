@@ -44,6 +44,60 @@ class AuthController {
       next(err);
     }
   }
+
+  // ─── Recuperación de contraseña ──────────────────────────────────────────────
+
+  async solicitarRecuperacion(req, res, next) {
+    try {
+      const { email } = req.body;
+      const response = await authService.solicitarRecuperacion(email);
+      return res.json(ApiResponse.ok('Solicitud procesada', response));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async verificarCodigo(req, res, next) {
+    try {
+      const { email, codigo } = req.body;
+      const response = await authService.verificarCodigo(email, codigo);
+      return res.json(ApiResponse.ok(response));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async cambiarPassword(req, res, next) {
+    try {
+      const { email, codigo, nuevaPassword } = req.body;
+      const response = await authService.cambiarPassword(email, codigo, nuevaPassword);
+      return res.json(ApiResponse.ok(response));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // ─── Verificación de cuenta ──────────────────────────────────────────────────
+
+  async verificarCuenta(req, res, next) {
+    try {
+      const { email, codigo } = req.body;
+      const response = await authService.verificarCuenta(email, codigo);
+      return res.json(ApiResponse.ok(response));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async reenviarCodigoVerificacion(req, res, next) {
+    try {
+      const { email } = req.body;
+      const response = await authService.reenviarCodigoVerificacion(email);
+      return res.json(ApiResponse.ok(response));
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AuthController();
