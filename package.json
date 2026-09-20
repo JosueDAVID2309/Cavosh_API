@@ -8,9 +8,16 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "lint": "eslint src/ --ext .js",
-    "lint:fix": "eslint src/ --ext .js --fix"
+    "lint:fix": "eslint src/ --ext .js --fix",
+    "test": "jest --runInBand"
   },
-  "keywords": ["cavosh", "cafe", "pos", "api", "express"],
+  "keywords": [
+    "cavosh",
+    "cafe",
+    "pos",
+    "api",
+    "express"
+  ],
   "author": "Cavosh Team",
   "license": "MIT",
   "dependencies": {
@@ -23,6 +30,12 @@
   "devDependencies": {
     "eslint": "^8.57.1",
     "glob": "^10.0.0",
-    "nodemon": "^3.1.4"
+    "jest": "^30.5.2",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.2.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "verbose": true
   }
 }
